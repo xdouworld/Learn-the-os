@@ -133,6 +133,12 @@ loader_start:
     mov esp,LOADER_STACK_TOP
     mov ax,SELECTOR_VIDEO
     mov gs,ax
+    mov eax,KERNEL_START_SECTOR ;kernel.bin所在扇区号
+    mov ebx,KERNEL_BIN_BASE_ADDR ;从磁盘读出后,写入到ebx指定地址
+    
+    mov ecx,200
+    ;----------------暂停------------------------------
+    call rd_disk_m_32
     call setup_page
     sgdt [gdt_ptr]
     mov ebx,[gdt_ptr +2]
@@ -153,9 +159,11 @@ loader_start:
 
     lgdt [gdt_ptr]
 
-    mov byte [gs:160], 'V'
-    
-    jmp $          
+    jmp SELECTOR_CODE:entry_kernel
+entry_kernel:
+    call kernel_init
+    mov esp,0x009f000
+    jmp KERNEL_ENTRY_POINT   ;用地址0x1500访问测试    
 ;---------------------------------创建页目录及页表--------------------------
 setup_page:
 ;先把页目录占用的空间逐字节清0
@@ -202,3 +210,147 @@ setup_page:
     add eax,0x1000
     loop .create_kernel_pde
     ret
+;---------------------kernel.bin中的segment拷贝到编译地址
+kernel_init:
+    xor eax,eax
+    xor ebx,ebx ;ebx记录程序头表地址
+    xor ecx,ecx ;cx记录程序头表中的program header数量
+    xor edx,edx ;dx记录program header尺寸,即e_phentsize
+
+    mov dx ,[KERNEL_BIN_BASE_ADDR + 42]
+    ;偏移位置42字节属性，表示header大小
+    mov ebx ,[KERNEL_BIN_BASE_ADDR + 28]
+
+    add ebx,KERNEL_BIN_BASE_ADDR
+    mov cx,[KERNEL_BIN_BASE_ADDR+44] ;e_phnum，表示有几个header
+
+.each_segment:
+    cmp byte [byte +0],PT_NULL
+    je .PTNULL
+
+    ;为函数memcpy压入参数，参数是从右往左
+    ;memcpy(dst,src,size)
+    push dword [ebx+16]
+    mov eax,[ebx+4]
+    add eax,KERNEL_BIN_BASE_ADDR
+
+    push eax ;压入函数的memcpy的第二个参数：源地址
+
+    push dword [ebx + 8] ;目的地址
+
+    call mem_cpy
+    
+    add esp,12
+.PTNULL:
+    add ebx,edx
+
+    loop .each_segment
+    ret
+
+
+;------------逐字节拷贝mem_cpy(dst,src,size)---------
+mem_cpy:
+    cld
+    push ebp
+    mov ebp,esp
+    push ecx ;rep指令用于ecx,但ecx对于外层循环还有用
+
+    mov edi, [ebp + 8] ;dst
+    mov esi,[ebp + 12] ;src
+    mov ecx,[ebp + 16] ;size
+    rep movsb     ;逐字节拷贝
+
+    ;恢复环境
+    pop ecx
+    pop ebp
+    ret
+
+rd_disk_m_32:
+;------------------------------------------------------------------------
+;1 写入待操作磁盘数
+;2 写入LBA 低24位寄存器 确认扇区
+;3 device 寄存器 第4位主次盘 第6位LBA模式 改为1
+;4 command 写指令
+;5 读取status状态寄存器 判断是否完成工作
+;6 完成工作 取出数据
+ 
+ ;;;;;;;;;;;;;;;;;;;;;
+ ;1 写入待操作磁盘数
+ ;;;;;;;;;;;;;;;;;;;;;
+    mov esi,eax   ; 
+    mov di,cx     ; 
+    
+    mov dx,0x1F2  ; 
+    mov al,cl     ; 
+    out dx,al     ; 
+    
+    mov eax,esi   ; 
+    
+;;;;;;;;;;;;;;;;;;;;;
+;2 写入LBA 24位寄存器 确认扇区
+;;;;;;;;;;;;;;;;;;;;;
+
+
+    mov dx,0x1F3  ; LBA low
+    out dx,al 
+    mov cl,0x8    ; shr 右移8位 把24位给送到 LBA low mid high 寄存器中
+    mov dx,0x1F4  ; LBA mid
+   
+    out dx,al
+    shr eax,cl    ; eax为32位 ax为16位 eax的低位字节 右移8位即8~15
+    
+    mov dx,0x1F5
+    shr eax,cl
+    out dx,al
+    
+;;;;;;;;;;;;;;;;;;;;;
+;3 device 寄存器 第4位主次盘 第6位LBA模式 改为1
+;;;;;;;;;;;;;;;;;;;;;
+
+    		 
+    		  ; 24 25 26 27位 尽管我们知道ax只有2 但还是需要按规矩办事 
+    		  ; 把除了最后四位的其他位置设置成0
+    shr eax,cl
+    
+    and al,0x0f 
+    or al,0xe0   ;!!! 把第四-七位设置成0111 转换为LBA模式
+    mov dx,0x1F6 ; 参照硬盘控制器端口表 Device 
+    out dx,al
+
+;;;;;;;;;;;;;;;;;;;;;
+;4 向Command写操作 Status和Command一个寄存器
+;;;;;;;;;;;;;;;;;;;;;
+
+    mov dx,0x1F7 ; Status寄存器端口号
+    mov ax,0x20  ; 0x20是读命令
+    out dx,al
+    
+;;;;;;;;;;;;;;;;;;;;;
+;5 向Status查看是否准备好惹 
+;;;;;;;;;;;;;;;;;;;;;
+    
+		   ;设置不断读取重复 如果不为1则一直循环
+  .not_ready:     
+    nop           ; !!! 空跳转指令 在循环中达到延时目的
+    in al,dx      ; 把寄存器中的信息返还出来
+    and al,0x88   ; !!! 0100 0100 0x88
+    cmp al,0x08
+    jne .not_ready ; !!! jump not equal == 0
+    
+;;;;;;;;;;;;;;;;;;;;;
+;6 读取数据
+;;;;;;;;;;;;;;;;;;;;;
+
+    mov ax,di      ;把 di 储存的cx 取出来
+    mov dx,256
+    mul dx        ;与di 与 ax 做乘法 计算一共需要读多少次 方便作循环 低16位放ax 高16位放dx
+    mov cx,ax      ;loop 与 cx相匹配 cx-- 当cx == 0即跳出循环
+    mov dx,0x1F0
+ .go_read_loop:
+    in ax,dx      ;两字节dx 一次读两字
+    mov [ebx],ax
+    add ebx,2
+    loop .go_read_loop
+    
+    ret ;与call 配对返回原来的位置 跳转到call下一条指令
+

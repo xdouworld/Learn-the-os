@@ -60,3 +60,8 @@ RPL3    equ 11b
 TI_GDT  equ 000b
 TI_LDT  equ 100b
 
+;------内核地址----------
+KERNEL_START_SECTOR equ 0x9
+KERNEL_BIN_BASE_ADDR equ 0x70000
+KERNEL_ENTRY_POINT   equ    0xc0001500
+

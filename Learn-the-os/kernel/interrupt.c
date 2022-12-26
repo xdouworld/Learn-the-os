@@ -11,6 +11,8 @@
 
 #define IDT_DESC_CNT 0x21      // 目前总共支持的中断数
 
+#define EFLAGS_IF   0X00000200   //eflags为1
+#define GET_EFLAGS(EFLAG_VAR)  asm volatile ("pushfl; popl %0" : "=g" (EFLAG_VAR))
 /*中断门描述符结构体*/
 struct gate_desc {
    uint16_t    func_offset_low_word;
@@ -35,10 +37,6 @@ intr_handler idt_table[IDT_DESC_CNT];
 
 /********************************************/
 extern intr_handler intr_entry_table[IDT_DESC_CNT];	    // 声明引用定义在kernel.S中的中断处理函数入口数组
-
-
-
-
 
 /* 初始化可编程中断控制器8259A */
 static void pic_init(void) {
@@ -93,6 +91,38 @@ static void general_intr_handler(uint8_t vec_nr) {
    put_char('\n');	
 }
 
+
+enum intr_status intr_enable()
+{
+    if(intr_get_status() != INTR_ON)
+    {
+    	asm volatile("sti");
+    	return INTR_OFF;
+    }
+    return INTR_ON;
+}
+
+enum intr_status intr_disable()
+{
+    if(intr_get_status() != INTR_OFF)
+    {
+	   	asm volatile("cli");
+	   	return INTR_ON;
+    }
+    return INTR_OFF;
+}
+
+enum intr_status intr_set_status(enum intr_status status)
+{
+    return (status & INTR_ON) ? intr_enable() : intr_disable();
+}
+
+enum intr_status intr_get_status()
+{
+    uint32_t eflags = 0;
+    GET_EFLAGS(eflags);
+    return (eflags & EFLAGS_IF) ? INTR_ON : INTR_OFF; 
+}
 
 /* 完成一般中断处理函数注册及异常名称注册 */
 static void exception_init(void) {			    // 完成一般中断处理函数注册及异常名称注册

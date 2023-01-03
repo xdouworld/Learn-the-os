@@ -81,4 +81,20 @@ VECTOR 0X1D ,ZERO
 VECTOR 0X1E ,ERROR_CODE                               ;处理器自动推错误码
 VECTOR 0X1F ,ZERO
 VECTOR 0X20 ,ZERO
+VECTOR 0X21 ,ZERO					;键盘中断
+VECTOR 0X22 ,ZERO					;级联
+VECTOR 0X23 ,ZERO					;串口2
+VECTOR 0X24 ,ZERO					;串口1
+VECTOR 0X25 ,ZERO					;并口2
+VECTOR 0X26 ,ZERO					;软盘
+VECTOR 0X27 ,ZERO					;并口1
+VECTOR 0X28 ,ZERO					;实时时钟
+VECTOR 0X29 ,ZERO					;重定向
+VECTOR 0X2A ,ZERO					;保留
+VECTOR 0x2B ,ZERO					;保留
+VECTOR 0x2C ,ZERO					;ps/2 鼠标
+VECTOR 0x2D ,ZERO					;fpu 浮点单元异常
+VECTOR 0x2E ,ZERO					;硬盘
+VECTOR 0x2F ,ZERO					;保留
+
 

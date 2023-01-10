@@ -4,8 +4,11 @@
 #include "thread.h"
 #include "interrupt.h"
 #include "console.h"
-//void k_thread_a(void*);
-//void k_thread_b(void*);
+/* 临时为测试添加 */
+#include "ioqueue.h"
+#include "keyboard.h"
+void k_thread_a(void*);
+void k_thread_b(void*);
 void main(){
     // put_char('W');
     // put_char('e');
@@ -30,4 +33,29 @@ void main(){
     
 }
 
+/* 在线程中运行的函数 */
+void k_thread_a(void* arg) {     
+   while(1) {
+      enum intr_status old_status = intr_disable();
+      if (!ioq_empty(&kbd_buf)) {
+	 console_put_str(arg);
+	 char byte = ioq_getchar(&kbd_buf);
+	 console_put_char(byte);
+      }
+      intr_set_status(old_status);
+   }
+}
+
+/* 在线程中运行的函数 */
+void k_thread_b(void* arg) {     
+   while(1) {
+      enum intr_status old_status = intr_disable();
+      if (!ioq_empty(&kbd_buf)) {
+	 console_put_str(arg);
+	 char byte = ioq_getchar(&kbd_buf);
+	 console_put_char(byte);
+      }
+      intr_set_status(old_status);
+   }
+}
 
